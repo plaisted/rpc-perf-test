@@ -14,49 +14,48 @@ namespace RpcPerfTest.NATS.Client
         public static volatile int ReadyCount = 0;
         public static void Main(string[] args)
         {
-            //starting trigger for all workers
-            ManualResetEvent starter = new ManualResetEvent(false);
-
             //get cmd line options naively
             int workers = args.Length > 0 ? int.Parse(args[0]) : 1;
             int attempts = args.Length > 1 ? int.Parse(args[1]) : 1000;
-
-            var connection = new ConnectionFactory().CreateConnection();
             
-            //simple task bag
-            List<Task<decimal>> tasks = new List<Task<decimal>>();
-            //queue on concurrent workers
-            for (var i = 0; i < workers; i++)
+            using (var starter = new ManualResetEvent(false)) //starting trigger for all workers
+            using (var connection = new ConnectionFactory().CreateConnection()) //shared tcp nats connection for all workers
             {
-                tasks.Add(Task.Run(() => RunWorker(attempts, connection, starter)));
-            }
+                //simple task bag
+                List<Task<decimal>> tasks = new List<Task<decimal>>();
+                //queue on concurrent workers
+                for (var i = 0; i < workers; i++)
+                {
+                    tasks.Add(Task.Run(() => RunWorker(attempts, connection, starter)));
+                }
 
-            var sw = new Stopwatch();
-            sw.Start();
-            //wait for workers to finish warming
-            while (ReadyCount < workers && sw.ElapsedMilliseconds < 15000)
-            {
-                Thread.Sleep(100);
-            }
-            //did not all warm
-            if (ReadyCount < workers)
-            {
-                throw new ApplicationException("Workers did not start in timeout.");
-            }
-            //start worker requests
-            starter.Set();
+                var sw = new Stopwatch();
+                sw.Start();
+                //wait for workers to finish warming
+                while (ReadyCount < workers && sw.ElapsedMilliseconds < 15000)
+                {
+                    Thread.Sleep(100);
+                }
+                //did not all warm
+                if (ReadyCount < workers)
+                {
+                    throw new ApplicationException("Workers did not start in timeout.");
+                }
+                //start worker requests
+                starter.Set();
 
-            //time overall execution, some overhead from tasks etc but with large number of requests this is negligible.
-            sw.Restart();
-            Task.WaitAll(tasks.ToArray());
-            sw.Stop();
+                //time overall execution, some overhead from tasks etc but with large number of requests this is negligible.
+                sw.Restart();
+                Task.WaitAll(tasks.ToArray());
+                sw.Stop();
 
-            //get stats
-            var averagePerWorker = Decimal.Divide(tasks.Select(x => x.Result).Sum(), workers);
-            var rpsTotal = Decimal.Divide(attempts * workers, sw.ElapsedMilliseconds) * 1000;
-            Console.WriteLine($"Per request : {averagePerWorker} ms.");
-            Console.WriteLine($"Total RPS: {rpsTotal}.");
-            Console.ReadLine();
+                //get stats
+                var averagePerWorker = Decimal.Divide(tasks.Select(x => x.Result).Sum(), workers);
+                var rpsTotal = Decimal.Divide(attempts * workers, sw.ElapsedMilliseconds) * 1000;
+                Console.WriteLine($"Per request : {averagePerWorker} ms.");
+                Console.WriteLine($"Total RPS: {rpsTotal}.");
+                Console.ReadLine();
+            }
         }
 
         public static async Task<Decimal> RunWorker(int count, IConnection connection, ManualResetEvent starter)

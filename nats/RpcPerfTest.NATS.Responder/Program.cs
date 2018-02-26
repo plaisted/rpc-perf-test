@@ -9,8 +9,8 @@ namespace RpcPerfTest.NATS.Responder
         static void Main(string[] args)
         {
             using (var client = new ProxyClient())
+            using (var sub = client.Start())
             {
-                var sub = client.Start();
                 Console.WriteLine("Responder started.");
                 Console.ReadLine();
             }
@@ -26,7 +26,7 @@ namespace RpcPerfTest.NATS.Responder
             connection = new ConnectionFactory().CreateConnection();
         }
 
-        private void Process(object sender, MsgHandlerEventArgs args)
+        private void Process(object _, MsgHandlerEventArgs args)
         {
             var msg = new Msg();
             msg.Subject = args.Message.Reply;
